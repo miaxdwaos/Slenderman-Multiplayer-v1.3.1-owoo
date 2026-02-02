@@ -7,20 +7,20 @@
     <style>
         body { margin: 0; background: #000; color: white; font-family: 'Courier New', monospace; overflow: hidden; }
         canvas { display: block; background: #020202; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0,0,0,0.95); padding: 30px; border: 2px solid #440000; min-width: 320px; z-index: 100; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #440000; min-width: 320px; z-index: 100; }
         .menu-btn { padding: 12px 24px; margin: 10px; cursor: pointer; background: #600; color: white; border: none; font-weight: bold; text-transform: uppercase; }
         .menu-btn:hover { background: #a00; }
         input { padding: 12px; background: #111; border: 1px solid #444; color: white; width: 85%; margin-bottom: 10px; }
         #hud { position: absolute; top: 20px; left: 20px; font-size: 22px; display: none; text-shadow: 2px 2px #000; }
-        #msg-overlay { position: absolute; top: 40%; width: 100%; text-align: center; font-size: 50px; display: none; font-weight: bold; pointer-events: none; z-index: 200; }
-        #notification-log { position: absolute; bottom: 20px; left: 20px; color: #ff0000; font-size: 18px; pointer-events: none; }
+        #msg-overlay { position: absolute; top: 40%; width: 100%; text-align: center; font-size: 40px; display: none; font-weight: bold; pointer-events: none; z-index: 200; }
+        #lobby-list { margin: 15px 0; text-align: left; background: #111; padding: 10px; border: 1px solid #333; }
+        .victim-name { color: #f00; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div id="hud">PÁGINAS: <span id="pageCount">0</span> / 8</div>
     <div id="msg-overlay"></div>
-    <div id="notification-log"></div>
 
     <div id="ui">
         <h1>SLENDER P2P</h1>
@@ -31,15 +31,15 @@
         </div>
 
         <div id="join-section" style="display:none;">
-            <input type="text" id="peer-id-input" placeholder="Pegar ID del Host">
+            <input type="text" id="peer-id-input" placeholder="Pegar ID aquí">
             <br>
             <button class="menu-btn" onclick="initMultiplayer(false)">Conectar</button>
         </div>
 
         <div id="lobby" style="display:none;">
             <h3 id="lobby-status">CONECTANDO...</h3>
-            <p>ID: <b id="display-id" style="color:red">...</b></p>
-            <div id="lobby-list" style="text-align:left; background:#111; padding:10px; border:1px solid #333;"></div>
+            <p>ID DE SALA: <b id="display-id" style="color:red">...</b></p>
+            <div id="lobby-list"></div>
             <button id="start-btn" class="menu-btn" style="display:none;" onclick="broadcastStart()">Iniciar Partida</button>
             <p id="wait-msg" style="display:none; color: gray;">Esperando al Host...</p>
         </div>
@@ -56,8 +56,8 @@
         const GameContentSlender = { PersonSpriteheh: new Image() };
         GameContentSlender.PersonSpriteheh.src = "PersonSpriteheh.jpg";
 
-        let player = { name: "", x: 400, y: 400, size: 50, speed: 4, color: "rgba(255, 0, 0, 0.3)", dead: false, angle: 0 };
-        let remotePlayer = { name: "", x: -200, y: -200, active: false, color: "rgba(0, 100, 255, 0.3)", dead: false, angle: 0 };
+        let player = { name: "Victim 1", x: 400, y: 400, size: 50, speed: 4, color: "rgba(255, 0, 0, 0.3)", dead: false, angle: 0 };
+        let remotePlayer = { name: "Victim 2", x: -200, y: -200, active: false, color: "rgba(0, 100, 255, 0.3)", dead: false, angle: 0 };
         let slender = { x: 100, y: 100, w: 40, h: 90, speed: 1.5 };
         let pages = [];
         let collectedPages = 0;
@@ -65,29 +65,34 @@
         let isHost = false;
         let peer, conn;
 
-        // Notificaciones de salida
-        function showNotification(text) {
-            const log = document.getElementById('notification-log');
-            log.innerText = text;
-            setTimeout(() => { log.innerText = ""; }, 4000);
-        }
-
+        // --- Salida de Jugador ---
         window.addEventListener('beforeunload', () => {
             if (conn && conn.open) conn.send({ type: 'DISCONNECT', victim: player.name });
         });
 
-        function removeRemotePlayer() {
-            if (remotePlayer.active) {
-                showNotification(remotePlayer.name + " se ha salido.");
-                remotePlayer.active = false;
-                remotePlayer.x = -1000;
-                updateLobbyUI();
-            }
+        function removeRemotePlayer(vName) {
+            if (!remotePlayer.active) return;
+            remotePlayer.active = false;
+            
+            const overlay = document.getElementById('msg-overlay');
+            overlay.innerText = `${vName} se ha salido...`;
+            overlay.style.color = "orange";
+            overlay.style.display = "block";
+
+            setTimeout(() => { if(gameRunning) overlay.style.display = "none"; else location.reload(); }, 3000);
         }
 
         function showJoinInput() {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('join-section').style.display = 'block';
+        }
+
+        function updateLobbyUI() {
+            const list = document.getElementById('lobby-list');
+            list.innerHTML = `<div>• <span class="victim-name">${player.name}</span> (Tú)</div>`;
+            if (remotePlayer.active) {
+                list.innerHTML += `<div>• <span class="victim-name">${remotePlayer.name}</span> (Listo)</div>`;
+            }
         }
 
         function initMultiplayer(asHost) {
@@ -114,32 +119,24 @@
                 conn = c;
                 setupConnection();
                 if (isHost) {
-                    document.getElementById('start-btn').style.display = 'inline-block';
                     remotePlayer.active = true;
+                    document.getElementById('start-btn').style.display = 'inline-block';
                     updateLobbyUI();
                 }
             });
         }
 
-        function updateLobbyUI() {
-            const list = document.getElementById('lobby-list');
-            list.innerHTML = `<div>• ${player.name} (Tú)</div>`;
-            if (remotePlayer.active) {
-                list.innerHTML += `<div>• ${remotePlayer.name} (Conectado)</div>`;
-            }
-        }
-
         function setupConnection() {
-            conn.on('close', removeRemotePlayer);
+            conn.on('open', () => { if(!isHost) { remotePlayer.active = true; updateLobbyUI(); } });
+            conn.on('close', () => removeRemotePlayer(remotePlayer.name));
+            
             conn.on('data', (data) => {
                 if (data.type === 'PAGES_DATA') pages = data.pages;
                 if (data.type === 'START') startGame();
-                if (data.type === 'DISCONNECT') removeRemotePlayer();
+                if (data.type === 'DISCONNECT') removeRemotePlayer(data.victim);
                 if (data.type === 'SYNC') {
-                    remotePlayer.x = data.x;
-                    remotePlayer.y = data.y;
-                    remotePlayer.dead = data.dead;
-                    remotePlayer.angle = data.angle;
+                    remotePlayer.x = data.x; remotePlayer.y = data.y;
+                    remotePlayer.dead = data.dead; remotePlayer.angle = data.angle;
                     remotePlayer.active = true;
                 }
                 if (data.type === 'COLLECT') {
@@ -147,10 +144,7 @@
                     checkPages();
                 }
             });
-            if (!isHost) {
-                remotePlayer.active = true;
-                document.getElementById('wait-msg').style.display = 'block';
-            }
+            if (!isHost) document.getElementById('wait-msg').style.display = 'block';
         }
 
         function broadcastStart() {
